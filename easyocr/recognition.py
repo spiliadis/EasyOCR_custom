@@ -97,9 +97,10 @@ class AlignCollate(object):
         return image_tensors
 
 def recognizer_predict(model, converter, test_loader, batch_max_length,\
-                       ignore_idx, char_group_idx, decoder = 'greedy', beamWidth= 5, device = 'cpu'):
+                       ignore_idx, char_group_idx, decoder = 'greedy', beamWidth= 5, device = 'cpu', return_preds=False):
     model.eval()
     result = []
+    preds_accum = []  # will hold one [T, C] probs tensor per image if return_preds is True
     with torch.no_grad():
         for image_tensors in test_loader:
             batch_size = image_tensors.size(0)
@@ -114,12 +115,18 @@ def recognizer_predict(model, converter, test_loader, batch_max_length,\
             preds_size = torch.IntTensor([preds.size(1)] * batch_size)
 
             ######## filter ignore_char, rebalance
-            preds_prob = F.softmax(preds, dim=2)
-            preds_prob = preds_prob.cpu().detach().numpy()
-            preds_prob[:,:,ignore_idx] = 0.
-            pred_norm = preds_prob.sum(axis=2)
-            preds_prob = preds_prob/np.expand_dims(pred_norm, axis=-1)
-            preds_prob = torch.from_numpy(preds_prob).float().to(device)
+            preds_prob = F.softmax(preds, dim=2)                  # [B, T, C] torch
+            # filter ignore_idx and renormalize — do it in torch
+            if len(ignore_idx) > 0:
+                preds_prob[:, :, ignore_idx] = 0.0
+            pred_norm = preds_prob.sum(dim=2, keepdim=True).clamp_min(1e-12)
+            preds_prob = preds_prob / pred_norm
+
+            # keep a copy per image BEFORE converting to numpy (for callers that want probs)
+            if return_preds:
+                probs_for_return = preds_prob.detach().cpu()      # [B, T, C]
+                for b in range(probs_for_return.size(0)):
+                    preds_accum.append(probs_for_return[b])
 
             if decoder == 'greedy':
                 # Select max probabilty (greedy decoding) then decode index to character
@@ -148,7 +155,7 @@ def recognizer_predict(model, converter, test_loader, batch_max_length,\
                 confidence_score = custom_mean(pred_max_prob)
                 result.append([pred, confidence_score])
 
-    return result
+    return (result, preds_accum) if return_preds else result
 
 def get_recognizer(recog_network, network_params, character,\
                    separator_list, dict_list, model_path,\
@@ -185,7 +192,7 @@ def get_recognizer(recog_network, network_params, character,\
 
 def get_text(character, imgH, imgW, recognizer, converter, image_list,\
              ignore_char = '',decoder = 'greedy', beamWidth =5, batch_size=1, contrast_ths=0.1,\
-             adjust_contrast=0.5, filter_ths = 0.003, workers = 1, device = 'cpu'):
+             adjust_contrast=0.5, filter_ths = 0.003, workers = 1, device = 'cpu', return_preds=False):
     batch_max_length = int(imgW/10)
 
     char_group_idx = {}
@@ -203,8 +210,14 @@ def get_text(character, imgH, imgW, recognizer, converter, image_list,\
         num_workers=int(workers), collate_fn=AlignCollate_normal, pin_memory=True)
 
     # predict first round
-    result1 = recognizer_predict(recognizer, converter, test_loader,batch_max_length,\
-                                 ignore_idx, char_group_idx, decoder, beamWidth, device = device)
+    if return_preds:
+        result1, probs1 = recognizer_predict(
+            recognizer, converter, test_loader, batch_max_length,
+            ignore_idx, char_group_idx, decoder, beamWidth, device=device, return_preds=True)
+    else:
+        result1 = recognizer_predict(
+            recognizer, converter, test_loader, batch_max_length,
+            ignore_idx, char_group_idx, decoder, beamWidth, device=device)
 
     # predict second round
     low_confident_idx = [i for i,item in enumerate(result1) if (item[1] < contrast_ths)]
@@ -215,19 +228,34 @@ def get_text(character, imgH, imgW, recognizer, converter, image_list,\
         test_loader = torch.utils.data.DataLoader(
                         test_data, batch_size=batch_size, shuffle=False,
                         num_workers=int(workers), collate_fn=AlignCollate_contrast, pin_memory=True)
-        result2 = recognizer_predict(recognizer, converter, test_loader, batch_max_length,\
-                                     ignore_idx, char_group_idx, decoder, beamWidth, device = device)
+        if return_preds:
+            result2, probs2 = recognizer_predict(
+                recognizer, converter, test_loader, batch_max_length,
+                ignore_idx, char_group_idx, decoder, beamWidth, device=device, return_preds=True)
+        else:
+            result2 = recognizer_predict(
+                recognizer, converter, test_loader, batch_max_length,
+                ignore_idx, char_group_idx, decoder, beamWidth, device=device)
 
     result = []
+    probs_final = [] if return_preds else None
     for i, zipped in enumerate(zip(coord, result1)):
         box, pred1 = zipped
         if i in low_confident_idx:
             pred2 = result2[low_confident_idx.index(i)]
             if pred1[1]>pred2[1]:
-                result.append( (box, pred1[0], pred1[1]) )
+                result.append((box, pred1[0], pred1[1]))
+                if return_preds:
+                    # probs1 aligns 1:1 with result1
+                    probs_final.append(probs1[i])
             else:
-                result.append( (box, pred2[0], pred2[1]) )
+                result.append((box, pred2[0], pred2[1]))
+                if return_preds:
+                    # pick from probs2 using the mapped index in low_confident_idx
+                    probs_final.append(probs2[low_confident_idx.index(i)])
         else:
-            result.append( (box, pred1[0], pred1[1]) )
+            result.append((box, pred1[0], pred1[1]))
+            if return_preds:
+                probs_final.append(probs1[i])
 
-    return result
+    return (result, probs_final) if return_preds else result
