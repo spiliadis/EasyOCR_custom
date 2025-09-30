@@ -401,9 +401,14 @@ class Reader(object):
                 image_list = make_rotated_img_list(rotation_info, image_list)
                 max_width = max(max_width, imgH)
 
-            result = get_text(self.character, imgH, int(max_width), self.recognizer, self.converter, image_list,\
-                          ignore_char, decoder, beamWidth, batch_size, contrast_ths, adjust_contrast, filter_ths,\
-                          workers, self.device)
+            # result = get_text(self.character, imgH, int(max_width), self.recognizer, self.converter, image_list,\
+            #               ignore_char, decoder, beamWidth, batch_size, contrast_ths, adjust_contrast, filter_ths,\
+            #               workers, self.device)
+            result, preds = get_text(self.character, imgH, int(max_width), self.recognizer, self.converter,
+                               image_list, ignore_char, decoder, beamWidth, batch_size,
+                               contrast_ths, adjust_contrast, filter_ths,
+                               workers, self.device,
+                               return_preds=True)
 
             if rotation_info and (horizontal_list+free_list):
                 # Reshape result to be a list of lists, each row being for 
@@ -446,7 +451,8 @@ class Reader(object):
                  slope_ths = 0.1, ycenter_ths = 0.5, height_ths = 0.5,\
                  width_ths = 0.5, y_ths = 0.5, x_ths = 1.0, add_margin = 0.1, 
                  threshold = 0.2, bbox_min_score = 0.2, bbox_min_size = 3, max_candidates = 0,
-                 output_format='standard'):
+                 output_format='standard',
+                 get_char_topN=False, topN=3)):
         '''
         Parameters:
         image: file path or numpy-array or a byte stream object
@@ -470,6 +476,20 @@ class Reader(object):
                                 workers, allowlist, blocklist, detail, rotation_info,\
                                 paragraph, contrast_ths, adjust_contrast,\
                                 filter_ths, y_ths, x_ths, False, output_format)
+                   
+        if get_char_topN and detail != 0 and output_format == 'standard':
+            per_char_topN = []
+            for _, text, conf in result:
+                # run decode_topk using raw probs (via converter.decode_topk)
+                # you need probs/logits, easiest hack: call recognizer again here
+                # or modify get_text to also return preds
+                # Example assuming `preds` is available:
+                # topN_chars = self.converter.decode_topk(preds, N=topN)
+                topN_chars = []  # placeholder if preds not yet exposed
+                per_char_topN.append(topN_chars)
+
+            # append topN results into output tuples
+            result = [r + (per_char_topN[i],) for i, r in enumerate(result)]
 
         return result
     
