@@ -342,6 +342,30 @@ class CTCLabelConverter(object):
             index += l
         return texts
 
+    def decode_topk(self, mat, N=3):
+        """
+        Convert logits (mat) into top-N character predictions per timestep.
+        mat: [batch, T, C] logit probabilities
+        returns: list of per-batch results, each is a list of timesteps,
+                 each timestep is [(char, prob), ...] of length N
+        """
+        results = []
+        # softmax along characters if not already probabilities
+        probs = torch.nn.functional.softmax(torch.from_numpy(mat), dim=2) if isinstance(mat, np.ndarray) else torch.nn.functional.softmax(mat, dim=2)
+        topk_probs, topk_idx = torch.topk(probs, k=N, dim=2)
+
+        for b in range(probs.size(0)):
+            per_char = []
+            for t in range(probs.size(1)):
+                candidates = []
+                for k in range(N):
+                    idx = topk_idx[b, t, k].item()
+                    if idx not in self.ignore_idx:
+                        candidates.append((self.character[idx], float(topk_probs[b, t, k].item())))
+                per_char.append(candidates)
+            results.append(per_char)
+        return results
+    
     def decode_beamsearch(self, mat, beamWidth=5):
         texts = []
         for i in range(mat.shape[0]):
