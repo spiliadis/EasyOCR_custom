@@ -452,7 +452,7 @@ class Reader(object):
                  width_ths = 0.5, y_ths = 0.5, x_ths = 1.0, add_margin = 0.1, 
                  threshold = 0.2, bbox_min_score = 0.2, bbox_min_size = 3, max_candidates = 0,
                  output_format='standard',
-                 get_char_topN=False, topN=3)):
+                 get_char_topN=False, topN=3):
         '''
         Parameters:
         image: file path or numpy-array or a byte stream object
