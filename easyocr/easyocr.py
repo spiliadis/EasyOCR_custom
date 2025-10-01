@@ -485,6 +485,17 @@ class Reader(object):
         if get_char_topN and detail != 0 and output_format == 'standard' and preds:
           import torch
           # preds is a list of [T, C] tensors, stack them into [B, T, C]
+          max_T = max(p.size(0) for p in preds)
+          C = preds[0].size(1)
+          
+          padded = []
+          for p in preds:
+              T = p.size(0)
+              if T < max_T:
+                  # pad with zeros for missing timesteps
+                  pad = torch.zeros(max_T - T, C, device=p.device)
+                  p = torch.cat([p, pad], dim=0)
+              padded.append(p)
           batch_probs = torch.stack(preds, dim=0)
           per_char_topN = self.converter.decode_topk(batch_probs, N=topN)
           result = [r + (per_char_topN[i],) for i, r in enumerate(result)]
