@@ -496,7 +496,7 @@ class Reader(object):
                   pad = torch.zeros(max_T - T, C, device=p.device)
                   p = torch.cat([p, pad], dim=0)
               padded.append(p)
-          batch_probs = torch.stack(preds, dim=0)
+          batch_probs = torch.stack(padded, dim=0)
           per_char_topN = self.converter.decode_topk(batch_probs, N=topN)
           result = [r + (per_char_topN[i],) for i, r in enumerate(result)]
 
