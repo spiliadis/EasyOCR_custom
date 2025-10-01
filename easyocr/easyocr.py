@@ -385,7 +385,7 @@ class Reader(object):
                               ignore_char, decoder, beamWidth, batch_size, contrast_ths, adjust_contrast, filter_ths,\
                               workers, self.device)
                 result += result0
-                if 'preds' not in locals()
+                if 'preds' not in locals():
                   preds = []
                 preds.extend(preds0)
           
@@ -397,7 +397,7 @@ class Reader(object):
                               ignore_char, decoder, beamWidth, batch_size, contrast_ths, adjust_contrast, filter_ths,\
                               workers, self.device)
                 result += result0
-                if 'preds' not in locals()
+                if 'preds' not in locals():
                   preds = []
                 preds.extend(preds0)
         # default mode will try to process multiple boxes at the same time
