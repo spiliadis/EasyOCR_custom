@@ -385,7 +385,7 @@ class Reader(object):
                 image_list, max_width = get_image_list(h_list, f_list, img_cv_grey, model_height = imgH)
                 result0, preds0 = get_text(self.character, imgH, int(max_width), self.recognizer, self.converter, image_list,\
                               ignore_char, decoder, beamWidth, batch_size, contrast_ths, adjust_contrast, filter_ths,\
-                              workers, self.device)
+                              workers, self.device, return_preds=True)
                 result += result0
                 preds.extend(preds0)
           
@@ -395,7 +395,7 @@ class Reader(object):
                 image_list, max_width = get_image_list(h_list, f_list, img_cv_grey, model_height = imgH)
                 result0, preds0 = get_text(self.character, imgH, int(max_width), self.recognizer, self.converter, image_list,\
                               ignore_char, decoder, beamWidth, batch_size, contrast_ths, adjust_contrast, filter_ths,\
-                              workers, self.device)
+                              workers, self.device, return_preds=True)
                 result += result0
                 preds.extend(preds0)
         # default mode will try to process multiple boxes at the same time
