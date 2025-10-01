@@ -381,18 +381,25 @@ class Reader(object):
                 h_list = [bbox]
                 f_list = []
                 image_list, max_width = get_image_list(h_list, f_list, img_cv_grey, model_height = imgH)
-                result0 = get_text(self.character, imgH, int(max_width), self.recognizer, self.converter, image_list,\
+                result0, preds0 = get_text(self.character, imgH, int(max_width), self.recognizer, self.converter, image_list,\
                               ignore_char, decoder, beamWidth, batch_size, contrast_ths, adjust_contrast, filter_ths,\
                               workers, self.device)
                 result += result0
+                if 'preds' not in locals()
+                  preds = []
+                preds.extend(preds0)
+          
             for bbox in free_list:
                 h_list = []
                 f_list = [bbox]
                 image_list, max_width = get_image_list(h_list, f_list, img_cv_grey, model_height = imgH)
-                result0 = get_text(self.character, imgH, int(max_width), self.recognizer, self.converter, image_list,\
+                result0, preds0 = get_text(self.character, imgH, int(max_width), self.recognizer, self.converter, image_list,\
                               ignore_char, decoder, beamWidth, batch_size, contrast_ths, adjust_contrast, filter_ths,\
                               workers, self.device)
                 result += result0
+                if 'preds' not in locals()
+                  preds = []
+                preds.extend(preds0)
         # default mode will try to process multiple boxes at the same time
         else:
             image_list, max_width = get_image_list(horizontal_list, free_list, img_cv_grey, model_height = imgH)
@@ -440,7 +447,7 @@ class Reader(object):
         elif output_format == 'free_merge':
             return merge_to_free(result, free_list)
         else:
-            return result
+            return result, preds
 
     def readtext(self, image, decoder = 'greedy', beamWidth= 5, batch_size = 1,\
                  workers = 0, allowlist = None, blocklist = None, detail = 1,\
@@ -471,25 +478,18 @@ class Reader(object):
                                                  )
         # get the 1st result from hor & free list as self.detect returns a list of depth 3
         horizontal_list, free_list = horizontal_list[0], free_list[0]
-        result = self.recognize(img_cv_grey, horizontal_list, free_list,\
+        result, preds = self.recognize(img_cv_grey, horizontal_list, free_list,\
                                 decoder, beamWidth, batch_size,\
                                 workers, allowlist, blocklist, detail, rotation_info,\
                                 paragraph, contrast_ths, adjust_contrast,\
                                 filter_ths, y_ths, x_ths, False, output_format)
                    
         if get_char_topN and detail != 0 and output_format == 'standard':
-            per_char_topN = []
-            for _, text, conf in result:
-                # run decode_topk using raw probs (via converter.decode_topk)
-                # you need probs/logits, easiest hack: call recognizer again here
-                # or modify get_text to also return preds
-                # Example assuming `preds` is available:
-                # topN_chars = self.converter.decode_topk(preds, N=topN)
-                topN_chars = []  # placeholder if preds not yet exposed
-                per_char_topN.append(topN_chars)
-
-            # append topN results into output tuples
-            result = [r + (per_char_topN[i],) for i, r in enumerate(result)]
+          import torch
+          # preds is a list of [T, C] tensors, stack them into [B, T, C]
+          batch_probs = torch.stack(preds, dim=0)
+          per_char_topN = self.converter.decode_topk(batch_probs, N=topN)
+          result = [r + (per_char_topN[i],) for i, r in enumerate(result)]
 
         return result
     
