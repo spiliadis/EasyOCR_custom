@@ -344,26 +344,42 @@ class CTCLabelConverter(object):
 
     def decode_topk(self, mat, N=3):
         """
-        Convert logits (mat) into top-N character predictions per timestep.
+        Convert logits (mat) into top-N character predictions per *collapsed character position*
+        (after CTC decoding rules: collapse repeats, remove blanks).
+        
         mat: [batch, T, C] logit probabilities
-        returns: list of per-batch results, each is a list of timesteps,
-                 each timestep is [(char, prob), ...] of length N
+        returns: list of per-batch results, each is a list of characters,
+                 each character is [(char, prob), ...] of length N
         """
         results = []
         # softmax along characters if not already probabilities
         probs = torch.nn.functional.softmax(torch.from_numpy(mat), dim=2) if isinstance(mat, np.ndarray) else torch.nn.functional.softmax(mat, dim=2)
+    
+        B, T, C = probs.size()
         topk_probs, topk_idx = torch.topk(probs, k=N, dim=2)
-
-        for b in range(probs.size(0)):
+    
+        for b in range(B):
             per_char = []
-            for t in range(probs.size(1)):
+            prev_idx = None
+            for t in range(T):
+                # greedy winner at this timestep
+                best_idx = topk_idx[b, t, 0].item()
+    
+                # skip if same as previous (collapse repeats) or blank
+                if best_idx == prev_idx or best_idx in self.ignore_idx:
+                    continue
+    
+                # collect top-N candidates for this timestep
                 candidates = []
                 for k in range(N):
                     idx = topk_idx[b, t, k].item()
                     if idx not in self.ignore_idx:
                         candidates.append((self.character[idx], float(topk_probs[b, t, k].item())))
                 per_char.append(candidates)
+    
+                prev_idx = best_idx
             results.append(per_char)
+    
         return results
     
     def decode_beamsearch(self, mat, beamWidth=5):
