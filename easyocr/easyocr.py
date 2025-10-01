@@ -482,7 +482,7 @@ class Reader(object):
                                 paragraph, contrast_ths, adjust_contrast,\
                                 filter_ths, y_ths, x_ths, False, output_format)
                    
-        if get_char_topN and detail != 0 and output_format == 'standard':
+        if get_char_topN and detail != 0 and output_format == 'standard' and preds:
           import torch
           # preds is a list of [T, C] tensors, stack them into [B, T, C]
           batch_probs = torch.stack(preds, dim=0)
